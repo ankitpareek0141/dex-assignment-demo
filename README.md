@@ -1,18 +1,132 @@
-# React + Vite
+# 🦄 Mini Uniswap V2 Clone (DEX Project)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A decentralized exchange (DEX) built using **Solidity, Hardhat, and Ethers.js**, inspired by Uniswap V2.  
+It implements core AMM functionality including liquidity pools, swaps, and LP tokens.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+# ⚙️ Tech Stack
 
-## React Compiler
+- Solidity ^0.8.x
+- Hardhat (v2)
+- OpenZeppelin Contracts
+- Ethers.js v6
+- React (Vite)
+- Local Hardhat Network
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+---
 
-Note: This will impact Vite dev & build performances.
+# 🧠 Architecture
 
-## Expanding the ESLint configuration
+User → Router → Factory → Pool → ERC20 Tokens
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+---
+
+# 📁 Project Structure
+
+contracts/
+  - Factory.sol
+  - Router.sol
+  - Pool.sol
+  - MockERC20.sol
+
+scripts/
+  - deploy.js
+
+test/
+  - dex.test.js
+
+frontend/ (Vite React app)
+
+---
+
+# 🚀 Setup (Backend)
+
+npm install
+
+---
+
+# 🧪 Compile Contracts
+
+npx hardhat compile
+
+---
+
+# ⚡ Start Local Blockchain
+
+npx hardhat node
+
+RPC: http://127.0.0.1:8545  
+Chain ID: 31337
+
+---
+
+# 📦 Deploy Contracts
+
+npx hardhat run scripts/deploy.js --network localhost
+
+---
+
+# 🧪 Run Tests
+
+npx hardhat test
+
+---
+
+# 🌐 Frontend (Vite React)
+
+## 1. Install frontend deps
+
+cd frontend
+npm install
+
+## 2. Start Vite dev server
+
+npm run dev
+
+Runs at:
+http://localhost:5173
+
+---
+
+## 3. Connect MetaMask
+
+Network:
+- RPC: http://127.0.0.1:8545
+- Chain ID: 31337
+
+---
+
+## 4. Add Contract Config
+
+Create:
+
+frontend/src/config.js
+
+export const ROUTER_ADDRESS = "0x...";
+export const FACTORY_ADDRESS = "0x...";
+export const TOKEN_A = "0x...";
+export const TOKEN_B = "0x...";
+
+---
+
+## 5. Use ABI
+
+Use:
+
+artifacts/contracts/Router.sol/Router.json
+
+---
+
+# 💱 Features
+
+- Add Liquidity
+- Remove Liquidity
+- Swap Tokens (x * y = k AMM)
+
+---
+
+# ⚠️ Warning
+
+This is a learning project. Not audited. Not for production use.
+
