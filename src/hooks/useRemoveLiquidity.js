@@ -31,11 +31,7 @@ function useRemoveLiquidity(setTxStatus) {
             throw new Error('Pair does not exist');
         }
 
-        const lpToken = getContractInstance(
-            pairAddress, 
-            ERC20_ABI, 
-            signer
-        );
+        const lpToken = getContractInstance(pairAddress, ERC20_ABI, signer);
 
         // Get LP balance
         const lpBalance = await lpToken.balanceOf(user);
@@ -47,7 +43,6 @@ function useRemoveLiquidity(setTxStatus) {
         if (lpBalance < amountInParsed) {
             throw new Error('Insufficient tokens found');
         }
-
 
         setTxStatus('Approving LP tokens...');
 
@@ -67,7 +62,7 @@ function useRemoveLiquidity(setTxStatus) {
         await tx.wait();
 
         setTxStatus('Liquidity removed successfully 🎉');
-    };
+    }
 
     return { removeLiquidity };
 }

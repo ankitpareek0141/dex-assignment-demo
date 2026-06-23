@@ -10,10 +10,10 @@ import {
 import { ROUTER_ABI } from './utils/routerAbi';
 import { ERC20_ABI } from './utils/erc20Abi';
 import { FACTORY_ABI } from './utils/factoryAbi';
-import getMetamaskInjectedProvider from './utils/getInjectedProvider';
 import useApprove from './hooks/useApprove';
 import useAddLiquidity from './hooks/useAddLiquidity';
 import useRemoveLiquidity from './hooks/useRemoveLiquidity';
+import useSwap from './hooks/useSwap';
 
 function App() {
     const [tab, setTab] = useState('swap');
@@ -32,7 +32,7 @@ function App() {
     const { approve } = useApprove(setTxStatus);
     const { addLiquidity } = useAddLiquidity(setTxStatus);
     const { removeLiquidity } = useRemoveLiquidity(setTxStatus);
-
+    const { swap } = useSwap(setTxStatus);
 
     // Listen for account change
     useEffect(() => {
@@ -104,13 +104,13 @@ function App() {
             const signer = await browserProvider.getSigner();
             const user = await signer.getAddress();
 
-            const [ parsedAmountA, tokenAAddress ] = await approve(
+            const [parsedAmountA, tokenAAddress] = await approve(
                 tokenA,
                 amountA,
                 signer,
             );
 
-            const [ parsedAmountB, tokenBAddress ] = await approve(
+            const [parsedAmountB, tokenBAddress] = await approve(
                 tokenB,
                 amountB,
                 signer,
@@ -143,66 +143,25 @@ function App() {
             setLoading(true);
             setTxStatus('Connecting wallet...');
 
-            const injectedProvider = getMetamaskInjectedProvider();
+            if (!provider) return alert('Error in metamask connection');
 
-            if (!injectedProvider) return alert('Error in metamask connection');
-
-            const provider = new ethers.BrowserProvider(injectedProvider);
-            const signer = await provider.getSigner();
+            const browserProvider = new ethers.BrowserProvider(provider);
+            const signer = await browserProvider.getSigner();
             const user = await signer.getAddress();
 
-            const router = new ethers.Contract(
-                ROUTER_ADDRESS,
-                ROUTER_ABI,
+            const tokenOutAddress = tokens[tokenB];
+
+            const [ amountIn, tokenInAddress ] = await approve(
+                tokenA,
+                amountA,
                 signer,
             );
-
-            const tokenInAddress = tokens[tokenA];
-            const tokenOutAddress = tokens[tokenB];
 
             if (!tokenInAddress || !tokenOutAddress) {
                 throw new Error('Invalid token selection');
             }
 
-            const tokenInContract = new ethers.Contract(
-                tokenInAddress,
-                ERC20_ABI,
-                signer,
-            );
-
-            const decimalsIn = await tokenInContract.decimals();
-            const amountInParsed = ethers.parseUnits(amountA, decimalsIn);
-
-            // 1. Approve router
-            setTxStatus('Approving token...');
-
-            const approveTx = await tokenInContract.approve(
-                ROUTER_ADDRESS,
-                amountInParsed,
-            );
-            await approveTx.wait();
-
-            // 2. Swap parameters
-            setTxStatus('Preparing swap...');
-
-            const amountsOutMin = 0; // ⚠️ later add slippage protection
-
-            const path = [tokenInAddress, tokenOutAddress];
-
-            setTxStatus('Swapping tokens...');
-
-            const swapTx = await router.swapExactTokensFromToken(
-                tokenInAddress,
-                tokenOutAddress,
-                amountInParsed,
-                0,
-            );
-
-            setTxStatus('Transaction submitted... waiting confirmation');
-
-            await swapTx.wait();
-
-            setTxStatus('Swap successful 🎉');
+            await swap(tokenInAddress, tokenOutAddress, amountIn, signer);
         } catch (err) {
             console.error(err);
             setTxStatus('Swap failed ❌');
@@ -230,11 +189,12 @@ function App() {
             const user = await signer.getAddress();
 
             await removeLiquidity(amountA, signer, user);
-
         } catch (err) {
             console.error(err);
             console.error(err?.info?.error?.message);
-            setTxStatus(err?.info?.error?.message || 'Remove liquidity failed ❌');
+            setTxStatus(
+                err?.info?.error?.message || 'Remove liquidity failed ❌',
+            );
         } finally {
             setLoading(false);
             setAmountA('');
@@ -306,6 +266,7 @@ function App() {
                     <>
                         <TokenBox
                             title="From"
+                            amount={amountA}
                             setAmount={setAmountA}
                             setToken={setTokenA}
                         />
@@ -331,7 +292,7 @@ function App() {
                         <button
                             className="w-full mt-5 bg-purple-600 hover:bg-purple-700 py-4 rounded-xl text-white font-bold"
                             onClick={handleSwap}
-                            disabled={!account}
+                            disabled={!account || loading}
                         >
                             Swap
                         </button>
@@ -371,19 +332,19 @@ function App() {
 
                         <button
                             className="w-full mt-5 bg-green-600 hover:bg-green-700 py-4 rounded-xl text-white font-bold"
-                            disabled={!account}
                             onClick={handleAddLiquidity}
+                            disabled={!account || loading}
                         >
                             Add Liquidity
                         </button>
                         {loading && (
-                            <div className="mt-4 p-3 rounded bg-blue-600 text-white">
+                            <div className="mt-4 p-3 rounded bg-blue-600 text-white break-all">
                                 {txStatus}
                             </div>
                         )}
 
                         {!loading && txStatus && (
-                            <div className="mt-4 p-3 rounded bg-green-600 text-white">
+                            <div className="mt-4 p-3 rounded bg-green-600 text-white break-all">
                                 {txStatus}
                             </div>
                         )}
@@ -406,7 +367,7 @@ function App() {
 
                         <button
                             className="w-full mt-5 bg-red-600 hover:bg-red-700 py-4 rounded-xl text-white font-bold"
-                            disabled={!account}
+                            disabled={!account || loading}
                             onClick={handleRemoveLiquidity}
                         >
                             Remove Liquidity

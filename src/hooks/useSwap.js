@@ -5,8 +5,12 @@ import { ROUTER_ABI } from '../utils/routerAbi';
 import { ROUTER_ADDRESS } from '../utils/addresses';
 import { ERC20_ABI } from '../utils/erc20Abi';
 
-function swap(setTxStatus) {
+function useSwap(setTxStatus) {
     async function swap(tokenInAddress, tokenOutAddress, amountIn, signer) {
+
+        console.log(tokenInAddress, tokenOutAddress, amountIn);
+        
+
         const routerContract = getContractInstance(
             ROUTER_ADDRESS,
             ROUTER_ABI,
@@ -36,7 +40,7 @@ function swap(setTxStatus) {
         setTxStatus('Swap successful 🎉');
     }
 
-    return [swap];
+    return { swap };
 }
 
 export default useSwap;
