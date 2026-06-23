@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { tokens } from './utils/tokens';
 import {
-  FACTORY_ADDRESS,
+    FACTORY_ADDRESS,
     ROUTER_ADDRESS,
     TOKEN_A_ADDRESS,
     TOKEN_B_ADDRESS,
@@ -10,10 +10,15 @@ import {
 import { ROUTER_ABI } from './utils/routerAbi';
 import { ERC20_ABI } from './utils/erc20Abi';
 import { FACTORY_ABI } from './utils/factoryAbi';
+import getMetamaskInjectedProvider from './utils/getInjectedProvider';
+import useApprove from './hooks/useApprove';
+import useAddLiquidity from './hooks/useAddLiquidity';
+import useRemoveLiquidity from './hooks/useRemoveLiquidity';
 
 function App() {
     const [tab, setTab] = useState('swap');
     const [account, setAccount] = useState('');
+    const [provider, setProvider] = useState(null);
 
     const [tokenA, setTokenA] = useState('ETH');
     const [tokenB, setTokenB] = useState('ETH');
@@ -24,80 +29,61 @@ function App() {
     const [txStatus, setTxStatus] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // Auto connect on refresh
-    useEffect(() => {
-        async function checkConnection() {
-            const provider =
-                window.ethereum?.providers?.find((p) => p.isMetaMask) ||
-                window.ethereum;
+    const { approve } = useApprove(setTxStatus);
+    const { addLiquidity } = useAddLiquidity(setTxStatus);
+    const { removeLiquidity } = useRemoveLiquidity(setTxStatus);
 
-            if (!provider) return;
-
-            const accounts = await provider.request({
-                method: 'eth_accounts',
-            });
-
-            if (accounts.length > 0) {
-                setAccount(accounts[0]);
-            }
-        }
-
-        checkConnection();
-    }, []);
 
     // Listen for account change
     useEffect(() => {
-        if (!window.ethereum) return;
+        const onAnnounceProvider = (event) => {
+            // event.detail contains provider info (name, icon) and the EIP-1193 provider object
+            if (event.detail.info.name === 'MetaMask') {
+                console.log(`Discovered wallet: ${event.detail.info.name}`);
+                setProvider(event.detail.provider);
+            }
+        };
+
+        window.addEventListener('eip6963:announceProvider', onAnnounceProvider);
+        window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+        return () => {
+            window.removeEventListener(
+                'eip6963:announceProvider',
+                onAnnounceProvider,
+            );
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!provider) return;
+
+        handelConnectWallet();
 
         const handler = (accounts) => {
             setAccount(accounts[0] || '');
         };
-
-        window.ethereum.on('accountsChanged', handler);
+        provider.on('accountsChanged', handler);
 
         return () => {
-            window.ethereum.removeListener('accountsChanged', handler);
+            provider.removeListener('accountsChanged', handler);
         };
-    }, []);
+    }, [provider]);
 
-    async function connectWalletBtn() {
+    async function handelConnectWallet() {
         try {
-            const provider = window.ethereum.providers?.find((p) => {
-                return p.isMetaMask === true && p.isPhantom !== true;
+            // Request the list of already-authorized accounts without triggering a popup
+            const accounts = await provider.request({
+                method: 'eth_accounts',
             });
-            console.log(provider);
 
-            try {
-                const accounts = await provider.request({
-                    method: 'eth_requestAccounts',
-                });
-                console.log('connected to: ', accounts);
-
-                await provider.request({
-                    method: 'wallet_switchEthereumChain',
-                    params: [{ chainId: '0xaa36a7' }], // 11155111 in hex
-                });
-
+            if (accounts && accounts.length > 0) {
+                console.log('Auto-connected to existing session:', accounts[0]);
                 setAccount(accounts[0]);
-            } catch (err) {
-                console.log('Error := ', err);
             }
         } catch (error) {
-            console.error('Connection failed:', error.message);
+            console.error('Failed to check existing session', error);
         }
-    }
-
-    function getMetamaskInjectedProvider() {
-        const injectedProvider = window.ethereum.providers?.find(
-            (p) => p.isMetaMask && !p.isPhantom,
-        );
-
-        if (!injectedProvider) {
-            alert('MetaMask not found');
-            return null;
-        }
-
-        return injectedProvider;
     }
 
     async function handleAddLiquidity() {
@@ -112,84 +98,31 @@ function App() {
         }
 
         try {
-            const injectedProvider = getMetamaskInjectedProvider();
+            if (!provider) return alert('Error in metamask connection');
 
-            if (!injectedProvider) return alert('Error in metamask connection');
-
-            const provider = new ethers.BrowserProvider(injectedProvider);
-            const signer = await provider.getSigner();
+            const browserProvider = new ethers.BrowserProvider(provider);
+            const signer = await browserProvider.getSigner();
             const user = await signer.getAddress();
 
-            const router = new ethers.Contract(
-                ROUTER_ADDRESS,
-                ROUTER_ABI,
+            const [ parsedAmountA, tokenAAddress ] = await approve(
+                tokenA,
+                amountA,
                 signer,
             );
 
-            const tokenAAddress = tokens[tokenA];
-            const tokenBAddress = tokens[tokenB];
-
-            const tokenAContract = new ethers.Contract(
-                tokenAAddress,
-                ERC20_ABI,
+            const [ parsedAmountB, tokenBAddress ] = await approve(
+                tokenB,
+                amountB,
                 signer,
             );
 
-            const tokenBContract = new ethers.Contract(
-                tokenBAddress,
-                ERC20_ABI,
-                signer,
-            );
-
-            // Fetch decimals
-            const decimalsA = await tokenAContract.decimals();
-            const decimalsB = await tokenBContract.decimals();
-
-            const parsedAmountA = ethers.parseUnits(amountA, decimalsA);
-            const parsedAmountB = ethers.parseUnits(amountB, decimalsB);
-
-            // ---------------------------
-            // 1. Approve Token A
-            // ---------------------------
-            setTxStatus('Approving Token A...');
-
-            const tx1 = await tokenAContract.approve(
-                ROUTER_ADDRESS,
-                parsedAmountA,
-            );
-            await tx1.wait();
-
-            // ---------------------------
-            // 2. Approve Token B
-            // ---------------------------
-            setTxStatus('Approving Token B...');
-
-            const tx2 = await tokenBContract.approve(
-                ROUTER_ADDRESS,
-                parsedAmountB,
-            );
-            await tx2.wait();
-
-            // ---------------------------
-            // 3. Add Liquidity
-            // ---------------------------
-            setTxStatus('Adding liquidity... Please confirm transaction');
-
-            const tx = await router.addLiquidity(
+            await addLiquidity(
                 tokenAAddress,
                 tokenBAddress,
                 parsedAmountA,
                 parsedAmountB,
+                signer,
             );
-
-            setTxStatus('Transaction submitted... waiting for confirmation');
-
-            await tx.wait();
-
-            // ---------------------------
-            // SUCCESS
-            // ---------------------------
-            setTxStatus('Liquidity added successfully 🎉');
         } catch (err) {
             console.error(err);
             setTxStatus('Transaction failed ❌');
@@ -252,8 +185,6 @@ function App() {
             // 2. Swap parameters
             setTxStatus('Preparing swap...');
 
-            const deadline = Math.floor(Date.now() / 1000) + 60 * 10;
-
             const amountsOutMin = 0; // ⚠️ later add slippage protection
 
             const path = [tokenInAddress, tokenOutAddress];
@@ -277,9 +208,9 @@ function App() {
             setTxStatus('Swap failed ❌');
         } finally {
             setLoading(false);
-            
-            setAmountA('')
-            setAmountB('')
+
+            setAmountA('');
+            setAmountB('');
 
             setTimeout(() => {
                 setTxStatus('');
@@ -292,78 +223,21 @@ function App() {
             setLoading(true);
             setTxStatus('Connecting wallet...');
 
-            const injectedProvider = getMetamaskInjectedProvider();
+            if (!provider) return alert('Error in metamask connection');
 
-            const provider = new ethers.BrowserProvider(injectedProvider);
-            const signer = await provider.getSigner();
+            const browserProvider = new ethers.BrowserProvider(provider);
+            const signer = await browserProvider.getSigner();
             const user = await signer.getAddress();
 
-            const factory = new ethers.Contract(
-                FACTORY_ADDRESS,
-                FACTORY_ABI,
-                signer,
-            );
-            const router = new ethers.Contract(
-                ROUTER_ADDRESS,
-                ROUTER_ABI,
-                signer,
-            );
+            await removeLiquidity(amountA, signer, user);
 
-            // LP Token address (pair address)
-            const tokenAAddress = tokens.TOKENA;
-            const tokenBAddress = tokens.TOKENB;
-            
-
-            const pairAddress = await factory.getPool(
-                tokenAAddress,
-                tokenBAddress,
-            );
-
-            if (!pairAddress || pairAddress === ethers.ZeroAddress) {
-                throw new Error('Pair does not exist');
-            }
-
-            const lpToken = new ethers.Contract(pairAddress, ERC20_ABI, signer);
-
-            // Get LP balance
-            const lpBalance = await lpToken.balanceOf(user);
-            
-            // const amountInParsed = ethers.parseUnits(amountA, 18);
-
-            // console.log(lpBalance ,"  ", amountInParsed);
-            
-
-            if (lpBalance === 0n) {
-                throw new Error('Insufficient tokens found');
-            }
-
-            setTxStatus('Approving LP tokens...');
-
-            // Approve router to burn LP tokens
-            const approveTx = await lpToken.approve(ROUTER_ADDRESS, lpBalance);
-            await approveTx.wait();
-
-            setTxStatus('Removing liquidity...');
-
-            const deadline = Math.floor(Date.now() / 1000) + 60 * 10;
-
-            const tx = await router.removeLiquidity(
-                tokenAAddress,
-                tokenBAddress,
-                lpBalance,
-            );
-
-            setTxStatus('Transaction submitted...');
-
-            await tx.wait();
-
-            setTxStatus('Liquidity removed successfully 🎉');
         } catch (err) {
             console.error(err);
-            setTxStatus(err.message || 'Remove liquidity failed ❌');
+            console.error(err?.info?.error?.message);
+            setTxStatus(err?.info?.error?.message || 'Remove liquidity failed ❌');
         } finally {
             setLoading(false);
-            setAmountA('')
+            setAmountA('');
 
             setTimeout(() => {
                 setTxStatus('');
@@ -381,7 +255,7 @@ function App() {
 
                     <button
                         className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl font-semibold"
-                        onClick={connectWalletBtn}
+                        onClick={handelConnectWallet}
                     >
                         {account
                             ? account.slice(0, 6) + '...' + account.slice(-4)
@@ -481,6 +355,7 @@ function App() {
                     <>
                         <TokenBox
                             title="Token A"
+                            amount={amountA}
                             setAmount={setAmountA}
                             setToken={setTokenA}
                         />
@@ -489,6 +364,7 @@ function App() {
 
                         <TokenBox
                             title="Token B"
+                            amount={amountB}
                             setAmount={setAmountB}
                             setToken={setTokenB}
                         />
@@ -553,7 +429,7 @@ function App() {
     );
 }
 
-function TokenBox({ title, setAmount, token, setToken }) {
+function TokenBox({ title, amount, setAmount, setToken }) {
     return (
         <div className="bg-[#2b3040] rounded-2xl p-4">
             <div className="text-gray-400 text-sm mb-2">{title}</div>
@@ -563,7 +439,7 @@ function TokenBox({ title, setAmount, token, setToken }) {
                     type="number"
                     placeholder="0.0"
                     className="bg-transparent text-white text-3xl outline-none w-full"
-                    value={token}
+                    value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                 />
 
@@ -572,11 +448,8 @@ function TokenBox({ title, setAmount, token, setToken }) {
                     onChange={(e) => setToken(e.target.value)}
                 >
                     {Object.keys(tokens).map((token) => {
-                        return <option>{token}</option>;
+                        return <option key={token}>{token}</option>;
                     })}
-                    {/* <option>ETH</option>
-                    <option>USDC</option>
-                    <option>DAI</option> */}
                 </select>
             </div>
         </div>
