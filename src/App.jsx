@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { ethers } from 'ethers';
 import { tokens } from './utils/tokens';
 import {
@@ -14,11 +14,12 @@ import useApprove from './hooks/useApprove';
 import useAddLiquidity from './hooks/useAddLiquidity';
 import useRemoveLiquidity from './hooks/useRemoveLiquidity';
 import useSwap from './hooks/useSwap';
+import { useWallet } from './context/WalletContext';
 
 function App() {
     const [tab, setTab] = useState('swap');
-    const [account, setAccount] = useState('');
-    const [provider, setProvider] = useState(null);
+    // const [account, setAccount] = useState('');
+    // const [provider, setProvider] = useState(null);
 
     const [tokenA, setTokenA] = useState('ETH');
     const [tokenB, setTokenB] = useState('ETH');
@@ -34,57 +35,60 @@ function App() {
     const { removeLiquidity } = useRemoveLiquidity(setTxStatus);
     const { swap } = useSwap(setTxStatus);
 
-    // Listen for account change
-    useEffect(() => {
-        const onAnnounceProvider = (event) => {
-            // event.detail contains provider info (name, icon) and the EIP-1193 provider object
-            if (event.detail.info.name === 'MetaMask') {
-                console.log(`Discovered wallet: ${event.detail.info.name}`);
-                setProvider(event.detail.provider);
-            }
-        };
+    const { account, provider, signer, handelConnectWallet, handelDisconnectWallet } =
+        useWallet();
 
-        window.addEventListener('eip6963:announceProvider', onAnnounceProvider);
-        window.dispatchEvent(new Event('eip6963:requestProvider'));
+    // // Listen for account change
+    // useEffect(() => {
+    //     const onAnnounceProvider = (event) => {
+    //         // event.detail contains provider info (name, icon) and the EIP-1193 provider object
+    //         if (event.detail.info.name === 'MetaMask') {
+    //             console.log(`Discovered wallet: ${event.detail.info.name}`);
+    //             setProvider(event.detail.provider);
+    //         }
+    //     };
 
-        return () => {
-            window.removeEventListener(
-                'eip6963:announceProvider',
-                onAnnounceProvider,
-            );
-        };
-    }, []);
+    //     window.addEventListener('eip6963:announceProvider', onAnnounceProvider);
+    //     window.dispatchEvent(new Event('eip6963:requestProvider'));
 
-    useEffect(() => {
-        if (!provider) return;
+    //     return () => {
+    //         window.removeEventListener(
+    //             'eip6963:announceProvider',
+    //             onAnnounceProvider,
+    //         );
+    //     };
+    // }, []);
 
-        handelConnectWallet();
+    // useEffect(() => {
+    //     if (!provider) return;
 
-        const handler = (accounts) => {
-            setAccount(accounts[0] || '');
-        };
-        provider.on('accountsChanged', handler);
+    //     handelConnectWallet();
 
-        return () => {
-            provider.removeListener('accountsChanged', handler);
-        };
-    }, [provider]);
+    //     const handler = (accounts) => {
+    //         setAccount(accounts[0] || '');
+    //     };
+    //     provider.on('accountsChanged', handler);
 
-    async function handelConnectWallet() {
-        try {
-            // Request the list of already-authorized accounts without triggering a popup
-            const accounts = await provider.request({
-                method: 'eth_accounts',
-            });
+    //     return () => {
+    //         provider.removeListener('accountsChanged', handler);
+    //     };
+    // }, [provider]);
 
-            if (accounts && accounts.length > 0) {
-                console.log('Auto-connected to existing session:', accounts[0]);
-                setAccount(accounts[0]);
-            }
-        } catch (error) {
-            console.error('Failed to check existing session', error);
-        }
-    }
+    // async function handelConnectWallet() {
+    //     try {
+    //         // Request the list of already-authorized accounts without triggering a popup
+    //         const accounts = await provider.request({
+    //             method: 'eth_accounts',
+    //         });
+
+    //         if (accounts && accounts.length > 0) {
+    //             console.log('Auto-connected to existing session:', accounts[0]);
+    //             setAccount(accounts[0]);
+    //         }
+    //     } catch (error) {
+    //         console.error('Failed to check existing session', error);
+    //     }
+    // }
 
     async function handleAddLiquidity() {
         setLoading(true);
@@ -99,10 +103,6 @@ function App() {
 
         try {
             if (!provider) return alert('Error in metamask connection');
-
-            const browserProvider = new ethers.BrowserProvider(provider);
-            const signer = await browserProvider.getSigner();
-            const user = await signer.getAddress();
 
             const [parsedAmountA, tokenAAddress] = await approve(
                 tokenA,
@@ -145,13 +145,9 @@ function App() {
 
             if (!provider) return alert('Error in metamask connection');
 
-            const browserProvider = new ethers.BrowserProvider(provider);
-            const signer = await browserProvider.getSigner();
-            const user = await signer.getAddress();
-
             const tokenOutAddress = tokens[tokenB];
 
-            const [ amountIn, tokenInAddress ] = await approve(
+            const [amountIn, tokenInAddress] = await approve(
                 tokenA,
                 amountA,
                 signer,
@@ -184,8 +180,6 @@ function App() {
 
             if (!provider) return alert('Error in metamask connection');
 
-            const browserProvider = new ethers.BrowserProvider(provider);
-            const signer = await browserProvider.getSigner();
             const user = await signer.getAddress();
 
             await removeLiquidity(amountA, signer, user);
@@ -211,20 +205,32 @@ function App() {
                 {/* Header */}
 
                 <div className="flex justify-between items-center mb-5">
-                    <h1 className="text-white text-2xl font-bold">My DEX</h1>
+                    <h1 className="text-white text-2xl font-bold">FunSwap</h1>
 
-                    <button
-                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl font-semibold"
-                        onClick={handelConnectWallet}
-                    >
-                        {account
-                            ? account.slice(0, 6) + '...' + account.slice(-4)
-                            : 'Connect Wallet'}
-                    </button>
+                    {!account ? (
+                        <button
+                            className="bg-purple-600 hover:bg-purple-700 transition-colors text-white px-5 py-2 rounded-xl font-semibold"
+                            onClick={handelConnectWallet}
+                        >
+                            Connect Wallet
+                        </button>
+                    ) : (
+                        <div className="flex items-center gap-3">
+                            <div className="bg-[#2b3040] px-4 py-2 rounded-xl border border-gray-700 text-white font-medium">
+                                🦊 {account.slice(0, 6)}...{account.slice(-4)}
+                            </div>
+
+                            <button
+                                onClick={handelDisconnectWallet}
+                                className="px-4 py-2 rounded-xl border border-red-500 text-red-400 hover:bg-red-500 hover:text-white transition-all duration-200"
+                            >
+                                Disconnect
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Tabs */}
-
                 <div className="grid grid-cols-3 bg-[#2b3040] rounded-xl p-1 mb-5">
                     <button
                         onClick={() => setTab('swap')}
@@ -261,7 +267,6 @@ function App() {
                 </div>
 
                 {/* Swap */}
-
                 {tab === 'swap' && (
                     <>
                         <TokenBox
@@ -311,7 +316,6 @@ function App() {
                 )}
 
                 {/* Add Liquidity */}
-
                 {tab === 'add' && (
                     <>
                         <TokenBox
@@ -331,7 +335,7 @@ function App() {
                         />
 
                         <button
-                            className="w-full mt-5 bg-green-600 hover:bg-green-700 py-4 rounded-xl text-white font-bold"
+                            className="w-full mt-5 bg-purple-600 hover:bg-purple-700 py-4 rounded-xl text-white font-bold"
                             onClick={handleAddLiquidity}
                             disabled={!account || loading}
                         >
@@ -352,7 +356,6 @@ function App() {
                 )}
 
                 {/* Remove Liquidity */}
-
                 {tab === 'remove' && (
                     <>
                         <div className="bg-[#2b3040] rounded-2xl p-4">

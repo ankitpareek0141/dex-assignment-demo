@@ -111,8 +111,13 @@ contract SwapRouter {
 
         IERC20(_tokenIn).transferFrom(_user, _pool, _amountIn);
 
-        uint256 _amountOut = IPool(_pool).swap(_tokenIn, _amountIn, _minAmountOut, _user);
-    
+        uint256 _amountOut = IPool(_pool).swap(
+            _tokenIn,
+            _amountIn,
+            _minAmountOut,
+            _user
+        );
+
         emit Swap(_tokenIn, _tokenOut, _amountIn, _amountOut, _user);
     }
 }
